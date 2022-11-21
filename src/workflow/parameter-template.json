@@ -1,0 +1,47 @@
+{
+  "sample_name": {
+    "description": "sample name"
+  },
+  "fastq_1": {
+    "description": "path to fastq1"
+  },
+  "fastq_2": {
+    "description": "path to fastq2"
+  },
+  "ref_fasta": {
+    "description": "path to reference fasta"
+  },
+  "readgroup_name": {
+    "description": "readgroup name"
+  },
+  "library_name": {
+    "description": "library name"
+  },
+  "platform_name": {
+    "description": "platform name}, e.g. Illumina"
+  },
+  "run_date": {
+    "description": "sequencing run date"
+  },
+  "sequencing_center": {
+    "description": "name of sequencing center"
+  },
+  "dbSNP_vcf": {
+    "description": "dbsnp vcf"
+  },
+  "Mills_1000G_indels_vcf": {
+    "description": "Mills 1000 genomes gold indels vcf"
+  },
+  "known_indels_vcf": {
+    "description": "known indels vcf"
+  },
+  "scattered_calling_intervals_archive": {
+    "description": "tar (not gzip) of scatter intervals"
+  },
+  "gatk_docker": {
+    "description": "docker uri in private ECR of GATK"
+  },
+  "gotc_docker": {
+    "description": "docker uri in private ECR of Genomes in the Cloud"
+  }
+}

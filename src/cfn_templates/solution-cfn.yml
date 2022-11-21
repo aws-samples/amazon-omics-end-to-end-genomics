@@ -1,0 +1,228 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Main stack that nests other stacks required by the solution
+Parameters:
+  ArtifactBucketName:
+    Type: String
+    Description: Choose an existing bucket in your account for deployment artifacts
+  LambdaArtifactsS3Prefix:
+    Type: String
+    Description: 'trailing backslash required - Folder name used by the upload script - keep in sync'
+    Default: lambdas/
+  CodeBuildArtifactsS3Prefix:
+    Type: String
+    Description: Folder name used by the upload script - keep in sync
+    Default: buildspecs
+  CfnTemplatesS3Prefix:
+    Type: String
+    Description: Folder name used by the upload script - keep in sync
+    Default: templates
+  WorkflowArtifactsS3Prefix:
+    Type: String
+    Description: Folder name used by the upload script - keep in sync
+    Default: workflows
+  WorkflowInputsBucketName:
+    Type: String
+    Description: New bucket created for users to upload inputs. Make it unique by adding accountId and region in the name
+  WorkflowOutputsBucketName:
+    Type: String
+    Description: New bucket created for workflows to write outputs. Make it unique by adding accountId and region in the name
+  ReferenceFastaName:
+    Type: String
+    Default: GRCh38
+  ReferenceFastaS3Uri:
+    Type: String
+    Default: s3://broad-references/hg38/v0/Homo_sapiens_assembly38.fasta
+  WorkflowIntervalS3Path:
+    Type: String
+    Default: s3://aws-genomics-static-us-east-1/omics-e2e/intervals.tar
+  ClinVarVcfS3Path:
+    Type: String
+    Default: s3://aws-genomics-static-us-east-1/omics-e2e/clinvar.vcf.gz
+  DnSnpVcfS3Uri:
+    Type: String
+    Default: s3://broad-references/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf
+  Mills1000GIndelsVcfS3Uri:
+    Type: String
+    Default: s3://broad-references/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz
+  KnownIndelsVcfS3Uri:
+    Type: String
+    Default: s3://broad-references/hg38/v0/Homo_sapiens_assembly38.known_indels.vcf.gz
+  WorkflowDefinitionFilename:
+    Type: String
+    Description: File name used by the upload script - keep in sync
+    Default: gatkbestpractices.wdl.zip
+  WorkflowParamsJsonTemplateFilename:
+    Type: String
+    Description: File name for the template - keep in sync with file in repo
+    Default: parameter-template.json
+  LambdaLayerS3Bucket:
+    Type: String
+    Description: bucket where omics API model ZIP is stored
+    Default: aws-genomics-static-us-east-1
+  LambdaLayerS3Key:
+    Type: String
+    Description: zip file s3 key for omics models lambda layer
+    Default: omics-e2e/lambdalayer.zip
+  UseLambdaLayer:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+Conditions:
+  UseLambdaLayerSelected: !Equals 
+    - !Sub '${UseLambdaLayer}'
+    - 'true'
+Resources:
+  CodeBuildStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://${ArtifactBucketName}.s3.amazonaws.com/${CfnTemplatesS3Prefix}/code-build-stack.yml
+      TimeoutInMinutes: 20
+      Parameters:
+        ResourcesS3Bucket: !Ref ArtifactBucketName
+        LambdasS3Prefix: !Ref LambdaArtifactsS3Prefix
+        BuildSpecS3Prefix: !Ref CodeBuildArtifactsS3Prefix
+        DockerGenomesInTheCloud: public.ecr.aws/aws-genomics/broadinstitute/genomes-in-the-cloud:2.4.7-1603303710
+        DockerGatk: public.ecr.aws/aws-genomics/broadinstitute/gatk:4.1.9.0
+  S3ResourcesStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://${ArtifactBucketName}.s3.amazonaws.com/${CfnTemplatesS3Prefix}/s3-stack.yml
+      TimeoutInMinutes: 5
+      Parameters:
+        DataInputBucketName: !Ref WorkflowInputsBucketName
+        DataOutputBucketName: !Ref WorkflowOutputsBucketName
+  OmicsResourcesStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - S3ResourcesStack
+      - CodeBuildStack
+    Properties:
+      TemplateURL: !Sub https://${ArtifactBucketName}.s3.amazonaws.com/${CfnTemplatesS3Prefix}/omics-resources-stack.yml
+      TimeoutInMinutes: 60
+      Parameters:
+        OmicsResourcesS3Bucket: !Ref ArtifactBucketName
+        OmicsCustomResourceLambdaS3Prefix: !Ref LambdaArtifactsS3Prefix
+        OmicsWorkflowInputBucketName: !Ref WorkflowInputsBucketName
+        OmicsWorkflowOutputBucketName: !Ref WorkflowOutputsBucketName
+        OmicsReferenceFastaUri: !Ref ReferenceFastaS3Uri
+        OmicsReferenceName: !Ref ReferenceFastaName
+        OmicsWorkflowDefinitionZipS3: !Sub "s3://${ArtifactBucketName}/${WorkflowArtifactsS3Prefix}/${WorkflowDefinitionFilename}"
+        OmicsWorkflowParamsJsonS3: !Sub "s3://${ArtifactBucketName}/${WorkflowArtifactsS3Prefix}/${WorkflowParamsJsonTemplateFilename}"
+        ClinvarS3Path: !Ref ClinVarVcfS3Path
+        UseLambdaLayer: !Ref UseLambdaLayer
+        OmicsModelLayerBucket: !Ref LambdaLayerS3Bucket
+        OmicsModelLayerKey: !Ref LambdaLayerS3Key
+  ApplyS3LifecycleStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - S3ResourcesStack
+      - CodeBuildStack
+    Properties:
+      TemplateURL: !Sub https://${ArtifactBucketName}.s3.amazonaws.com/${CfnTemplatesS3Prefix}/apply-s3-lifecycle-stack.yml
+      TimeoutInMinutes: 10
+      Parameters:
+        LambdaBucketName: !Ref ArtifactBucketName
+        LambdaArtifactPrefix: !Ref LambdaArtifactsS3Prefix
+        InputsBucketName: !Ref WorkflowInputsBucketName
+        OutputsBucketName: !Ref WorkflowOutputsBucketName
+  SfnTaskCheckerStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - OmicsResourcesStack
+      - CodeBuildStack
+    Properties:
+      TemplateURL: !Sub https://${ArtifactBucketName}.s3.amazonaws.com/${CfnTemplatesS3Prefix}/sfn-task-checker-stack.yml
+      TimeoutInMinutes: 10
+      Parameters:
+        OmicsOutputBucket: !Ref WorkflowOutputsBucketName
+        OmicsLambdaLayerARN:
+          Fn::GetAtt:
+            - OmicsResourcesStack
+            - Outputs.OmicsModelsLambdaLayerArn
+        LambdaBucketName: !Ref ArtifactBucketName
+        LambdaArtifactPrefix: !Ref LambdaArtifactsS3Prefix
+        UseLambdaLayer: !Ref UseLambdaLayer
+  StepFunctionStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - ApplyS3LifecycleStack
+      - SfnTaskCheckerStack
+    Properties:
+      TemplateURL: !Sub https://${ArtifactBucketName}.s3.amazonaws.com/${CfnTemplatesS3Prefix}/e2e-sfn-stack.yml
+      TimeoutInMinutes: 60
+      Parameters:
+        ReferenceFastaFileS3Uri: !Ref ReferenceFastaS3Uri
+        DbSnpVcf: !Ref DnSnpVcfS3Uri
+        Mills1000GIndelsVcf: !Ref Mills1000GIndelsVcfS3Uri
+        KnownIndelsVcf: !Ref KnownIndelsVcfS3Uri
+        OmicsImportSequenceLambdaArn:
+          Fn::GetAtt:
+            - OmicsResourcesStack
+            - Outputs.OmicsImportSequenceLambdaArn
+        OmicsImportSequenceJobRoleArn:
+          Fn::GetAtt:
+            - OmicsResourcesStack
+            - Outputs.OmicsImportSequenceJobRoleArn
+        CheckOmicsTaskLambdaFunctionArn:
+          Fn::GetAtt:
+            - SfnTaskCheckerStack
+            - Outputs.CheckOmicsTaskLambdaFunctionArn
+        OmicsWorkflowStartRunLambdaArn:
+          Fn::GetAtt:
+            - OmicsResourcesStack
+            - Outputs.OmicsWorkflowStartRunLambdaArn
+        OmicsWorkflowStartRunJobRoleArn:
+          Fn::GetAtt:
+            - OmicsResourcesStack
+            - Outputs.OmicsWorkflowStartRunJobRoleArn
+        OmicsImportVariantLambdaArn:
+          Fn::GetAtt:
+            - OmicsResourcesStack
+            - Outputs.OmicsImportVariantLambdaArn
+        OmicsImportVariantJobRoleArn:
+          Fn::GetAtt:
+            - OmicsResourcesStack
+            - Outputs.OmicsImportVariantJobRoleArn
+        ApplyS3LifecycleLambdaFunctionArn:
+          Fn::GetAtt: 
+            - ApplyS3LifecycleStack
+            - Outputs.ApplyS3LifecycleLambdaFunctionArn
+  SfnTriggerStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - StepFunctionStack
+    Properties:
+      TemplateURL: !Sub https://${ArtifactBucketName}.s3.amazonaws.com/${CfnTemplatesS3Prefix}/sfn-trigger-stack.yml
+      TimeoutInMinutes: 5
+      Parameters:
+        FastqInputBucket: !Ref WorkflowInputsBucketName
+        GenomicsStepFunctionArn:
+          Fn::GetAtt: 
+            - StepFunctionStack
+            - Outputs.AmazonOmicsStepFunctionArn
+        LambdaBucketName: !Ref ArtifactBucketName
+        LambdaArtifactPrefix: !Ref LambdaArtifactsS3Prefix
+        SequenceStoreId:
+          Fn::GetAtt:
+            - OmicsResourcesStack
+            - Outputs.OmicsSequenceStoreId
+        ReferenceArn:
+          Fn::GetAtt:
+            - OmicsResourcesStack
+            - Outputs.OmicsReferenceArn
+        WorkflowId: 
+          Fn::GetAtt:
+            - OmicsResourcesStack
+            - Outputs.OmicsWorkflowId
+        WorkflowOutputS3Path: !Sub "s3://${WorkflowOutputsBucketName}/outputs"
+        GatkDockerUri: 
+          Fn::GetAtt:
+            - CodeBuildStack
+            - Outputs.EcrImageUriGatk
+        GotcDockerUri:
+          Fn::GetAtt:
+            - CodeBuildStack
+            - Outputs.EcrImageUriGotc
+        IntervalS3Path: !Ref WorkflowIntervalS3Path

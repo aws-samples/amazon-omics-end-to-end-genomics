@@ -1,0 +1,166 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Lambda to evaluate complete set of inputs and  
+  invoke Step Functions State machine to process Genomics Data.
+  S3 event notification to lambda integration for FASTQ input bucket.
+Parameters:
+  FastqInputBucket:
+    Type: String
+    Description: S3 bucket that's used for the Lambda event notification (FASTQs)
+  GenomicsStepFunctionArn:
+    Type: String
+    Description: ARN of the Step Function State machine that processes Genomics input data
+  LambdaBucketName:
+    Type: String
+    Description: S3 bucket where lambda code artifacts are stored
+  LambdaArtifactPrefix:
+    Type: String
+    Description: Prefix in bucket where lambda artifacts are stored
+  SequenceStoreId:
+    Type: String
+  ReferenceArn:
+    Type: String
+  WorkflowId:
+    Type: String
+  WorkflowOutputS3Path:
+    Type: String
+  GatkDockerUri:
+    Type: String
+  GotcDockerUri:
+    Type: String
+  IntervalS3Path:
+    Type: String
+  NotificationAppliedToS3Prefix:
+    Type: String
+    Default: inputs/
+Resources:
+  InvokeGenomicsStepFunctionLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: lambda-invoke-genomics-sfn-wf
+      Code:
+        S3Bucket: !Ref LambdaBucketName
+        S3Key: !Sub "${LambdaArtifactPrefix}lambda_launch_genomics_sfn.zip"
+      Handler: lambda_launch_genomics_sfn.lambda_handler
+      Role: !GetAtt LambdaIAMRole.Arn
+      Runtime: python3.9
+      Timeout: 20
+      Environment:
+        Variables:
+          NUM_FASTQS_PER_SAMPLE: 2
+          GENOMICS_STEP_FUNCTION_ARN: !Ref GenomicsStepFunctionArn
+          SEQUENCE_STORE_ID: !Ref SequenceStoreId
+          REFERENCE_ARN: !Ref ReferenceArn
+          WORKFLOW_ID: !Ref WorkflowId
+          WORKFLOW_OUTPUT_S3_PATH: !Ref WorkflowOutputS3Path
+          GATK_DOCKER_URI: !Ref GatkDockerUri
+          GOTC_DOCKER_URI: !Ref GotcDockerUri
+          INTERVAL_S3_PATH: !Ref IntervalS3Path
+
+  LambdaIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: Policy1
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetBucketNotification'
+                  - 's3:PutBucketNotification'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                Resource: 
+                  - !Sub 'arn:aws:s3:::${FastqInputBucket}'
+                  - !Sub 'arn:aws:s3:::${FastqInputBucket}:*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - 'states:StartExecution'
+                  - 'states:StartSyncExecution'
+                Resource: !Sub ${GenomicsStepFunctionArn}
+
+  PutBucketNotificationTrigger:
+    Type: 'Custom::PutBucketNotificationTrigger'
+    DependsOn:
+      - PutBucketNotificationTriggerLambda
+    Version: 1
+    Properties:
+      ServiceToken: !Sub '${PutBucketNotificationTriggerLambda.Arn}'
+      BucketName: !Ref FastqInputBucket
+      Prefix: !Ref NotificationAppliedToS3Prefix
+      LambdaFunctionArn: !GetAtt InvokeGenomicsStepFunctionLambda.Arn
+
+  PutBucketNotificationTriggerLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - PutBucketNotificationTriggerLambdaRole
+    Properties:
+      Handler: add_bucket_notification_lambda.handler
+      Runtime: python3.9
+      FunctionName: !Sub 'lambda-put-bucket-notification'
+      Code:
+        S3Bucket: !Ref LambdaBucketName
+        S3Key: !Sub "${LambdaArtifactPrefix}add_bucket_notification_lambda.zip"
+      Role: !Sub '${PutBucketNotificationTriggerLambdaRole.Arn}'
+      Timeout: 60
+
+  PutBucketNotificationTriggerLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: PutBucketNotificationPolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 's3:PutBucketNotification'
+                Resource: !Sub 'arn:aws:s3:::${FastqInputBucket}'
+  
+  AllowInputBucketToInvokeLambda:
+    Type: 'AWS::Lambda::Permission'
+    DependsOn: 
+      - InvokeGenomicsStepFunctionLambda
+    Properties:
+      FunctionName: !GetAtt InvokeGenomicsStepFunctionLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Sub arn:aws:s3:::${FastqInputBucket}
+
+
+
+

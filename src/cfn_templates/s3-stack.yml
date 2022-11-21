@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  S3 buckets for Genomics inputs and outputs
+  with lifecycle configuration for cost savings
+Parameters:
+  DataInputBucketName:
+    Type: String
+  DataOutputBucketName:
+    Type: String
+Resources:
+  InputBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref DataInputBucketName
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteRule
+            Status: Enabled
+            ExpirationInDays: 30
+            TagFilters: 
+                - Key: OmicsTiering
+                  Value: RemoveIn30
+      BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - BucketKeyEnabled: true
+              ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+  InputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: !Ref InputBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action: "s3:*"
+            Effect: Deny
+            Resource:
+              - !Sub arn:aws:s3:::${DataInputBucketName}
+              - !Sub arn:aws:s3:::${DataInputBucketName}/*
+            Principal: '*'
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+            
+  OutputBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref DataOutputBucketName
+      LifecycleConfiguration:
+        Rules:
+          - Id: IntelligentTier
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 1
+                StorageClass: INTELLIGENT_TIERING
+            TagFilters: 
+                - Key: OmicsTiering
+                  Value: IntelligentTierAfter30
+      BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - BucketKeyEnabled: true
+              ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+
+  OutputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: !Ref OutputBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action: "s3:*"
+            Effect: Deny
+            Resource:
+              - !Sub arn:aws:s3:::${DataOutputBucketName}
+              - !Sub arn:aws:s3:::${DataOutputBucketName}/*
+            Principal: '*'
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"

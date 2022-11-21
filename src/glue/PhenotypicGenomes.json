@@ -1,0 +1,1213 @@
+{
+  "jobConfig": {
+    "name": "PhenotypicGenomes",
+    "description": "",
+    "role": "arn:aws:iam::022521056385:role/service-role/AWSGlueServiceRole-lf",
+    "command": "glueetl",
+    "version": "3.0",
+    "workerType": "G.1X",
+    "numberOfWorkers": 10,
+    "maxCapacity": 10,
+    "maxRetries": 0,
+    "timeout": 10,
+    "maxConcurrentRuns": 1,
+    "security": "none",
+    "scriptName": "elt.py",
+    "scriptLocation": "s3://aws-glue-assets-022521056385-us-east-1/scripts/",
+    "language": "python-3",
+    "jobParameters": [],
+    "tags": [],
+    "jobMode": "VISUAL_MODE",
+    "developerMode": false,
+    "connectionsList": [],
+    "temporaryDirectory": "s3://aws-glue-assets-022521056385-us-east-1/temporary/",
+    "logging": true,
+    "glueHiveMetastore": true,
+    "etlAutoTuning": true,
+    "metrics": true,
+    "spark": true,
+    "bookmark": "job-bookmark-enable",
+    "sparkPath": "s3://aws-glue-assets-022521056385-us-east-1/sparkHistoryLogs/",
+    "flexExecution": false,
+    "minFlexWorkers": null,
+    "sourceControlDetails": {
+      "Provider": "GITHUB"
+    }
+  },
+  "dag": {
+    "node-1665694312611": {
+      "nodeId": "node-1665694312611",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [
+        "node-1665691724279"
+      ],
+      "name": "Renamed keys for Join",
+      "generatedNodeName": "RenamedkeysforJoin_node1665694312611",
+      "classification": "Transform",
+      "type": "ApplyMapping",
+      "mapping": [
+        {
+          "toKey": "dg_patient_id",
+          "fromPath": [
+            "patient_id"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "dg_claim_id",
+          "fromPath": [
+            "claim_id"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "(dg) claim_type",
+          "fromPath": [
+            "claim_type"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "diagnosis_date",
+          "fromPath": [
+            "diagnosis_date"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "diagnosis_vocab",
+          "fromPath": [
+            "diagnosis_vocab"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "diagnosis_code",
+          "fromPath": [
+            "diagnosis_code"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "(dg) rendering_provider_npi",
+          "fromPath": [
+            "rendering_provider_npi"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "(dg) last_updated",
+          "fromPath": [
+            "last_updated"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "diagnosis_desc",
+          "fromPath": [
+            "diagnosis_desc"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "vocabulary_name",
+          "fromPath": [
+            "vocabulary_name"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        }
+      ],
+      "parentsValid": true,
+      "calculatedType": "",
+      "codeGenVersion": 2
+    },
+    "node-1665962473016": {
+      "nodeId": "node-1665962473016",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [
+        "node-1665891366375"
+      ],
+      "name": "Custom Transform",
+      "generatedNodeName": "CustomTransform_node1665962473016",
+      "classification": "Transform",
+      "type": "CustomCode",
+      "code": "from pyspark.sql.functions import coalesce  \nfrom awsglue.dynamicframe import DynamicFrame\n\ndf0 = dfc.select(list(dfc.keys())[0]).toDF()\n\ndf0.withColumn(\"patient_id\", coalesce(df0.dg_patient_id, df0.patient_id))\n\ndf0.withColumn(\"patient_id\", coalesce(df0.rx_patient_id, df0.patient_id))\n\ndf0.withColumn(\"patient_id\", coalesce(df0.pr_patient_id, df0.patient_id))\n\ndyf = DynamicFrame.fromDF(df0, glueContext, \"results\")\nreturn DynamicFrameCollection({\"CustomTransform0\": dyf}, glueContext)\n",
+      "className": "MyTransform",
+      "outputSchemas": [
+        [
+          {
+            "key": "patient_id",
+            "fullPath": [
+              "patient_id"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "lab_specimen_identifier",
+            "fullPath": [
+              "lab_specimen_identifier"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "sample_type",
+            "fullPath": [
+              "sample_type"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "afr_ancestry_percent",
+            "fullPath": [
+              "afr_ancestry_percent"
+            ],
+            "type": "double",
+            "children": null
+          },
+          {
+            "key": "amr_ancestry_percent",
+            "fullPath": [
+              "amr_ancestry_percent"
+            ],
+            "type": "double",
+            "children": null
+          },
+          {
+            "key": "eas_ancestry_percent",
+            "fullPath": [
+              "eas_ancestry_percent"
+            ],
+            "type": "double",
+            "children": null
+          },
+          {
+            "key": "eur_ancestry_percent",
+            "fullPath": [
+              "eur_ancestry_percent"
+            ],
+            "type": "double",
+            "children": null
+          },
+          {
+            "key": "oce_ancestry_percent",
+            "fullPath": [
+              "oce_ancestry_percent"
+            ],
+            "type": "double",
+            "children": null
+          },
+          {
+            "key": "sas_ancestry_percent",
+            "fullPath": [
+              "sas_ancestry_percent"
+            ],
+            "type": "double",
+            "children": null
+          },
+          {
+            "key": "was_ancestry_percent",
+            "fullPath": [
+              "was_ancestry_percent"
+            ],
+            "type": "double",
+            "children": null
+          },
+          {
+            "key": "pr_claim_id",
+            "fullPath": [
+              "pr_claim_id"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "pr_claim_type",
+            "fullPath": [
+              "pr_claim_type"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "pr_procedure_date",
+            "fullPath": [
+              "pr_procedure_date"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "pr_procedure_vocab",
+            "fullPath": [
+              "pr_procedure_vocab"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "pr_procedure_code",
+            "fullPath": [
+              "pr_procedure_code"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "procedure_short_desc",
+            "fullPath": [
+              "procedure_short_desc"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "procedure_long_desc",
+            "fullPath": [
+              "procedure_long_desc"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "vocabulary_name",
+            "fullPath": [
+              "vocabulary_name"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "dg_claim_id",
+            "fullPath": [
+              "dg_claim_id"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "diagnosis_date",
+            "fullPath": [
+              "diagnosis_date"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "diagnosis_vocab",
+            "fullPath": [
+              "diagnosis_vocab"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "diagnosis_code",
+            "fullPath": [
+              "diagnosis_code"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "diagnosis_desc",
+            "fullPath": [
+              "diagnosis_desc"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "vocabulary_name",
+            "fullPath": [
+              "vocabulary_name"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "rx_claim_id",
+            "fullPath": [
+              "rx_claim_id"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "ndc_product",
+            "fullPath": [
+              "ndc_product"
+            ],
+            "type": "bigint",
+            "children": null
+          },
+          {
+            "key": "quantity",
+            "fullPath": [
+              "quantity"
+            ],
+            "type": "double",
+            "children": null
+          },
+          {
+            "key": "uom",
+            "fullPath": [
+              "uom"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "prescriber_npi",
+            "fullPath": [
+              "prescriber_npi"
+            ],
+            "type": "bigint",
+            "children": null
+          },
+          {
+            "key": "brand_name",
+            "fullPath": [
+              "brand_name"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "generic_name",
+            "fullPath": [
+              "generic_name"
+            ],
+            "type": "string",
+            "children": null
+          },
+          {
+            "key": "dosage_form",
+            "fullPath": [
+              "dosage_form"
+            ],
+            "type": "string",
+            "children": null
+          }
+        ]
+      ],
+      "parentsValid": true,
+      "calculatedType": "",
+      "codeGenVersion": 2
+    },
+    "node-1665892999370": {
+      "nodeId": "node-1665892999370",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [
+        "node-1665891226598"
+      ],
+      "name": "Renamed keys for finalJoin",
+      "generatedNodeName": "RenamedkeysforfinalJoin_node1665892999370",
+      "classification": "Transform",
+      "type": "ApplyMapping",
+      "mapping": [
+        {
+          "toKey": "rx_patient_id",
+          "fromPath": [
+            "patient_id"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "rx_claim_id",
+          "fromPath": [
+            "claim_id"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": " rx_fill_date",
+          "fromPath": [
+            "rx_fill_date"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": " rx_number",
+          "fromPath": [
+            "rx_number"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "ndc_product",
+          "fromPath": [
+            "ndc_product"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "quantity",
+          "fromPath": [
+            "quantity"
+          ],
+          "toType": "double",
+          "fromType": "double",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "uom",
+          "fromPath": [
+            "uom"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "days_supply",
+          "fromPath": [
+            "days_supply"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "daw_code",
+          "fromPath": [
+            "daw_code"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "fill_number",
+          "fromPath": [
+            "fill_number"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "refills_authorized",
+          "fromPath": [
+            "refills_authorized"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": " transaction_status",
+          "fromPath": [
+            "transaction_status"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "prescriber_npi",
+          "fromPath": [
+            "prescriber_npi"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": " patient_to_pay",
+          "fromPath": [
+            "patient_to_pay"
+          ],
+          "toType": "double",
+          "fromType": "double",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "plan_to_pay",
+          "fromPath": [
+            "plan_to_pay"
+          ],
+          "toType": "double",
+          "fromType": "double",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "(right) package_description",
+          "fromPath": [
+            "package_description"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "brand_name",
+          "fromPath": [
+            "brand_name"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "generic_name",
+          "fromPath": [
+            "generic_name"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "dosage_form",
+          "fromPath": [
+            "dosage_form"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "(right) route",
+          "fromPath": [
+            "route"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "(right) dea_schedule",
+          "fromPath": [
+            "dea_schedule"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "(right) labeler_name",
+          "fromPath": [
+            "labeler_name"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "(right) package_start_date",
+          "fromPath": [
+            "package_start_date"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "(right) package_end_date",
+          "fromPath": [
+            "package_end_date"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "(right) rxcui",
+          "fromPath": [
+            "rxcui"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": true,
+          "children": null
+        }
+      ],
+      "parentsValid": true,
+      "calculatedType": "",
+      "codeGenVersion": 2
+    },
+    "node-1665891226598": {
+      "nodeId": "node-1665891226598",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [],
+      "name": "Novation_Rx",
+      "generatedNodeName": "Novation_Rx_node1665891226598",
+      "classification": "DataSource",
+      "type": "Catalog",
+      "isCatalog": true,
+      "database": "phenotypicdb",
+      "table": "ovation_rx_csv",
+      "calculatedType": "",
+      "runtimeParameters": [],
+      "codeGenVersion": 2
+    },
+    "node-1665695621571": {
+      "nodeId": "node-1665695621571",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [
+        "node-1665962600856"
+      ],
+      "name": "Amazon S3",
+      "generatedNodeName": "AmazonS3_node1665695621571",
+      "classification": "DataSink",
+      "type": "S3",
+      "streamingBatchInterval": 100,
+      "format": "glueparquet",
+      "compression": "none",
+      "path": "s3://omics-datalake-genomics/phentotypic-datalake/",
+      "partitionKeys": [],
+      "schemaChangePolicy": {
+        "enableUpdateCatalog": false,
+        "updateBehavior": null,
+        "database": null,
+        "table": null
+      },
+      "updateCatalogOptions": "none",
+      "calculatedType": "",
+      "codeGenVersion": 2
+    },
+    "node-1665894278030": {
+      "nodeId": "node-1665894278030",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [
+        "node-1665689379027"
+      ],
+      "name": "ApplyFilteronClinicalGenomicsData",
+      "generatedNodeName": "ApplyFilteronClinicalGenomicsData_node1665894278030",
+      "classification": "Transform",
+      "type": "ApplyMapping",
+      "mapping": [
+        {
+          "toKey": "patient_id",
+          "fromPath": [
+            "patient_id"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "lab_specimen_identifier",
+          "fromPath": [
+            "lab_specimen_identifier"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "sample_type",
+          "fromPath": [
+            "sample_type"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "year_of_birth",
+          "fromPath": [
+            "year_of_birth"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "reported_gender",
+          "fromPath": [
+            "reported_gender"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "state",
+          "fromPath": [
+            "state"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "afr_ancestry_percent",
+          "fromPath": [
+            "afr_ancestry_percent"
+          ],
+          "toType": "double",
+          "fromType": "double",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "amr_ancestry_percent",
+          "fromPath": [
+            "amr_ancestry_percent"
+          ],
+          "toType": "double",
+          "fromType": "double",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "eas_ancestry_percent",
+          "fromPath": [
+            "eas_ancestry_percent"
+          ],
+          "toType": "double",
+          "fromType": "double",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "eur_ancestry_percent",
+          "fromPath": [
+            "eur_ancestry_percent"
+          ],
+          "toType": "double",
+          "fromType": "double",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "oce_ancestry_percent",
+          "fromPath": [
+            "oce_ancestry_percent"
+          ],
+          "toType": "double",
+          "fromType": "double",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "sas_ancestry_percent",
+          "fromPath": [
+            "sas_ancestry_percent"
+          ],
+          "toType": "double",
+          "fromType": "double",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "was_ancestry_percent",
+          "fromPath": [
+            "was_ancestry_percent"
+          ],
+          "toType": "double",
+          "fromType": "double",
+          "dropped": false,
+          "children": null
+        }
+      ],
+      "parentsValid": true,
+      "calculatedType": "",
+      "codeGenVersion": 2
+    },
+    "node-1665691724279": {
+      "nodeId": "node-1665691724279",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [],
+      "name": "DiagnosisDF",
+      "generatedNodeName": "DiagnosisDF_node1665691724279",
+      "classification": "DataSource",
+      "type": "Catalog",
+      "isCatalog": true,
+      "database": "phenotypicdb",
+      "table": "ovation_diagnosis_csv",
+      "calculatedType": "",
+      "runtimeParameters": [],
+      "codeGenVersion": 2
+    },
+    "node-1665694288059": {
+      "nodeId": "node-1665694288059",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [
+        "node-1665694145271",
+        "node-1665694312611"
+      ],
+      "name": "Join",
+      "generatedNodeName": "Join_node1665694288059",
+      "classification": "Transform",
+      "type": "Join",
+      "joinType": "outer",
+      "columns": [
+        {
+          "from": "node-1665694145271",
+          "keys": [
+            "patient_id"
+          ]
+        },
+        {
+          "from": "node-1665694312611",
+          "keys": [
+            "dg_patient_id"
+          ]
+        }
+      ],
+      "columnConditions": [
+        "="
+      ],
+      "parentsValid": true,
+      "calculatedType": "",
+      "codeGenVersion": 2
+    },
+    "node-1665689379027": {
+      "nodeId": "node-1665689379027",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [],
+      "name": "ClinicoGenomicsDF",
+      "generatedNodeName": "ClinicoGenomicsDF_node1665689379027",
+      "classification": "DataSource",
+      "type": "Catalog",
+      "isCatalog": true,
+      "database": "phenotypicdb",
+      "table": "ovation_clinicogenomics_csv",
+      "calculatedType": "",
+      "runtimeParameters": [],
+      "codeGenVersion": 2
+    },
+    "node-1665690724543": {
+      "nodeId": "node-1665690724543",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [],
+      "name": "ProceduresDF",
+      "generatedNodeName": "ProceduresDF_node1665690724543",
+      "classification": "DataSource",
+      "type": "Catalog",
+      "isCatalog": true,
+      "database": "phenotypicdb",
+      "table": "ovation_procedures_csv",
+      "calculatedType": "",
+      "runtimeParameters": [],
+      "codeGenVersion": 2
+    },
+    "node-1665694157838": {
+      "nodeId": "node-1665694157838",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [
+        "node-1665690724543"
+      ],
+      "name": "FilterProcedureData",
+      "generatedNodeName": "FilterProcedureData_node1665694157838",
+      "classification": "Transform",
+      "type": "ApplyMapping",
+      "mapping": [
+        {
+          "toKey": "pr_patient_id",
+          "fromPath": [
+            "patient_id"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "pr_claim_id",
+          "fromPath": [
+            "claim_id"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "pr_claim_line",
+          "fromPath": [
+            "claim_line"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "pr_claim_type",
+          "fromPath": [
+            "claim_type"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "pr_procedure_date",
+          "fromPath": [
+            "procedure_date"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "pr_procedure_vocab",
+          "fromPath": [
+            "procedure_vocab"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "pr_procedure_code",
+          "fromPath": [
+            "procedure_code"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "(right) facility_provider_npi",
+          "fromPath": [
+            "facility_provider_npi"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "(right) place_of_service",
+          "fromPath": [
+            "place_of_service"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "(right) rendering_provider_npi",
+          "fromPath": [
+            "rendering_provider_npi"
+          ],
+          "toType": "long",
+          "fromType": "long",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "(right) last_updated",
+          "fromPath": [
+            "last_updated"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": true,
+          "children": null
+        },
+        {
+          "toKey": "procedure_short_desc",
+          "fromPath": [
+            "procedure_short_desc"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "procedure_long_desc",
+          "fromPath": [
+            "procedure_long_desc"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        },
+        {
+          "toKey": "vocabulary_name",
+          "fromPath": [
+            "vocabulary_name"
+          ],
+          "toType": "string",
+          "fromType": "string",
+          "dropped": false,
+          "children": null
+        }
+      ],
+      "parentsValid": true,
+      "calculatedType": "",
+      "codeGenVersion": 2
+    },
+    "node-1665962600856": {
+      "nodeId": "node-1665962600856",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [
+        "node-1665962473016"
+      ],
+      "name": "Select From Collection",
+      "generatedNodeName": "SelectFromCollection_node1665962600856",
+      "classification": "Transform",
+      "type": "SelectFromCollection",
+      "index": 0,
+      "parentsValid": true,
+      "calculatedType": "",
+      "codeGenVersion": 2
+    },
+    "node-1665694145271": {
+      "nodeId": "node-1665694145271",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [
+        "node-1665894278030",
+        "node-1665694157838"
+      ],
+      "name": "JoinClinicalGenomicswithProcedures",
+      "generatedNodeName": "JoinClinicalGenomicswithProcedures_node1665694145271",
+      "classification": "Transform",
+      "type": "Join",
+      "joinType": "outer",
+      "columns": [
+        {
+          "from": "node-1665894278030",
+          "keys": [
+            "patient_id"
+          ]
+        },
+        {
+          "from": "node-1665694157838",
+          "keys": [
+            "pr_patient_id"
+          ]
+        }
+      ],
+      "columnConditions": [
+        "="
+      ],
+      "parentsValid": true,
+      "calculatedType": "",
+      "codeGenVersion": 2
+    },
+    "node-1665891366375": {
+      "nodeId": "node-1665891366375",
+      "dataPreview": false,
+      "previewAmount": 0,
+      "inputs": [
+        "node-1665694288059",
+        "node-1665892999370"
+      ],
+      "name": "finalJoin",
+      "generatedNodeName": "finalJoin_node1665891366375",
+      "classification": "Transform",
+      "type": "Join",
+      "joinType": "outer",
+      "columns": [
+        {
+          "from": "node-1665694288059",
+          "keys": [
+            "patient_id"
+          ]
+        },
+        {
+          "from": "node-1665892999370",
+          "keys": [
+            "rx_patient_id"
+          ]
+        }
+      ],
+      "columnConditions": [
+        "="
+      ],
+      "parentsValid": true,
+      "calculatedType": "",
+      "codeGenVersion": 2
+    }
+  },
+  "hasBeenSaved": false
+}

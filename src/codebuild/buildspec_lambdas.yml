@@ -1,0 +1,100 @@
+version: 0.2
+env:
+  shell: bash
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+  build:
+    commands:
+      - |
+        #!/bin/bash
+        lambda_s3_dirname=${RESOURCES_PREFIX}
+        artifact_s3_dirname=${RESOURCES_PREFIX}
+
+        # to be removed
+        aws s3 cp s3://e2e-artifacts-999/move_to_public_bucket/lambdalayer.zip s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}
+
+        # Declare all lambda functions with package needs
+        declare -a LambdaNamesWithCrHelper=("create_reference_store_lambda" "import_reference_lambda" "create_variant_store_lambda" "create_sequence_store_lambda" "create_annotation_store_lambda" "import_annotation_lambda" "create_workflow_lambda" "add_bucket_notification_lambda")
+
+        # iterate over each lambda
+        for lambda in ${LambdaNamesWithCrHelper[@]}; do
+
+          COUNT=$(aws s3 ls "s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}${lambda}.py" | wc -l)
+          if [ $COUNT = 0 ]; then
+              echo "skipping Build, ${lambda}.py not found in  s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}"
+          else
+            echo "Building lambda zip for: ${lambda} "
+            mkdir tmp_${lambda}
+            cd tmp_${lambda}
+            echo "Download lambda py for: ${lambda} "
+            aws s3 cp s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}${lambda}.py .
+            echo "Installing pip packages"
+            pip install crhelper -t ./package
+            cd ./package
+            zip -r ../${lambda}.zip *
+            cd ..
+            echo "Zip lambda to artifact"
+            zip -g ${lambda}.zip ${lambda}.py
+            echo "Upload zip to s3://${RESOURCES_BUCKET}/${artifact_s3_dirname}"
+            aws s3 cp ${lambda}.zip s3://${RESOURCES_BUCKET}/${artifact_s3_dirname}
+            cd ..
+            rm -rf tmp_${lambda}
+            echo "Done with ${lambda}"
+          fi
+        done
+
+        # Declare all lambda functions with package needs
+        declare -a LambdaNamesJsonSchema=("apply_s3_lifecycle_lambda")
+
+        # iterate over each lambda
+        for lambda in ${LambdaNamesJsonSchema[@]}; do
+
+          COUNT=$(aws s3 ls "s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}${lambda}.py" | wc -l)
+          if [ $COUNT = 0 ]; then
+              echo "skipping Build, ${lambda}.py not found in  s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}"
+          else
+            echo "Building lambda zip for: ${lambda} "
+            mkdir tmp_${lambda}
+            cd tmp_${lambda}
+            echo "Download lambda py for: ${lambda} "
+            aws s3 cp s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}${lambda}.py .
+            echo "Installing pip packages"
+            pip install jsonschema -t ./package
+            cd ./package
+            zip -r ../${lambda}.zip *
+            cd ..
+            echo "Zip lambda to artifact"
+            zip -g ${lambda}.zip ${lambda}.py
+            echo "Upload zip to s3://${RESOURCES_BUCKET}/${artifact_s3_dirname}"
+            aws s3 cp ${lambda}.zip s3://${RESOURCES_BUCKET}/${artifact_s3_dirname}
+            cd ..
+            rm -rf tmp_${lambda}
+            echo "Done with ${lambda}"
+          fi
+        done
+
+        # Declare all lambda functions
+        declare -a LambdaNames=( "lambda_check_omics_workflow_task" "import_sequence_lambda" "import_variant_lambda" "lambda_launch_genomics_sfn"  "start_workflow_lambda")
+
+        # iterate over each lambda
+        for lambda in ${LambdaNames[@]}; do
+
+          COUNT=$(aws s3 ls s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}${lambda}.py | wc -l)
+          if [ $COUNT = 0 ]; then
+              echo "skipping Build, ${lambda}.py not found in  s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}"
+          else
+            echo "Building lambda zip for: ${lambda} "
+            mkdir tmp_${lambda}
+            cd tmp_${lambda}
+            echo "Download lambda py for: ${lambda} "
+            aws s3 cp s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}${lambda}.py .
+            zip ${lambda}.zip *
+            echo "Upload zip to s3://${RESOURCES_BUCKET}/${artifact_s3_dirname}"
+            aws s3 cp ${lambda}.zip s3://${RESOURCES_BUCKET}/${artifact_s3_dirname}
+            cd ..
+            rm -rf tmp_${lambda}
+            echo "Done with ${lambda}"
+          fi
+        done

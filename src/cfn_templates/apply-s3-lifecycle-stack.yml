@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Lambda to tag relevant genomics inputs and output
+  files in S3 so that S3 life cycle policies can be applied
+Parameters:
+  InputsBucketName:
+    Type: String
+    Description: S3 bucket that's used for inputs (e.g. FASTQs)
+  OutputsBucketName:
+    Type: String
+    Description: S3 bucket that's used for outputs (e.g. BAM/CRAM, VCFs)
+  LambdaBucketName:
+    Type: String
+    Description: S3 bucket where lambda code artifacts are stored
+  LambdaArtifactPrefix:
+    Type: String
+    Description: Prefix in bucket where lambda artifacts are stored
+Resources:
+  ApplyS3LifecycleLambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: apply-s3-lifecycle
+      Code:
+        S3Bucket: !Ref LambdaBucketName
+        S3Key: !Sub "${LambdaArtifactPrefix}apply_s3_lifecycle_lambda.zip"
+      Handler: apply_s3_lifecycle_lambda.lambda_handler
+      Role: !GetAtt LambdaCleanupIAMRole.Arn
+      Runtime: python3.9
+      Timeout: 30
+  LambdaCleanupIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: TaggingAndLogging
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:PutObjectTagging'
+                  - 's3:GetObjectTagging'
+                  - 's3:ListBucket'
+                Resource: 
+                  - !Sub 'arn:aws:s3:::${InputsBucketName}'
+                  - !Sub 'arn:aws:s3:::${InputsBucketName}/*'
+                  - !Sub 'arn:aws:s3:::${OutputsBucketName}'
+                  - !Sub 'arn:aws:s3:::${OutputsBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+Outputs:
+  ApplyS3LifecycleLambdaFunctionArn:
+    Value: !GetAtt ApplyS3LifecycleLambdaFunction.Arn
+    Export:
+      Name: ApplyS3LifecycleLambdaFunctionArn

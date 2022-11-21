@@ -1,0 +1,252 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Build Code Build projects and Lambdas to trigger the build of all required 
+  lambda functions and Docker images for Omics resources
+Parameters:
+  ResourcesS3Bucket:
+    Type: String
+  LambdasS3Prefix:
+    Type: String
+  BuildSpecS3Prefix:
+    Type: String
+  DockerGenomesInTheCloud:
+    Type: String
+  DockerGatk:
+    Type: String
+  DockerCodeBuildBuildSpecS3File:
+    Type: String
+    Default: buildspec_docker.yml
+  LambdasCodeBuildBuildSpecS3File:
+    Type: String
+    Default: buildspec_lambdas.yml
+Resources:
+  ECRGenomesInTheCloud:
+    Type: 'AWS::ECR::Repository'
+    Properties:
+      RepositoryName: genomes-in-the-cloud
+      RepositoryPolicyText:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowOmicsToPull
+            Effect: Allow
+            Principal:
+              Service: omics.amazonaws.com
+            Action:
+              - 'ecr:BatchGetImage'
+              - 'ecr:GetDownloadUrlForLayer'
+              - 'ecr:BatchCheckLayerAvailability'
+  ECRGatk:
+    Type: 'AWS::ECR::Repository'
+    Properties:
+      RepositoryName: gatk
+      RepositoryPolicyText:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowOmicsToPull
+            Effect: Allow
+            Principal:
+              Service: omics.amazonaws.com
+            Action:
+              - 'ecr:BatchGetImage'
+              - 'ecr:GetDownloadUrlForLayer'
+              - 'ecr:BatchCheckLayerAvailability'
+  CodeBuildServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: CodeBuildServiceRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:CompleteLayerUpload'
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:InitiateLayerUpload'
+                  - 'ecr:PutImage'
+                  - 'ecr:UploadLayerPart'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:GetBucketLocation'
+                  - 's3:ListBucket'
+                  - 's3:PutObject'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${ResourcesS3Bucket}'
+                  - !Sub 'arn:aws:s3:::${ResourcesS3Bucket}/*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+  DockerCodeBuildProject:
+    Type: 'AWS::CodeBuild::Project'
+    DependsOn:
+      - ECRGenomesInTheCloud
+      - ECRGatk
+      - CodeBuildServiceRole
+      - LambdasCodeBuildProject
+    Properties:
+      Name: DockerCodeBuildProject
+      ServiceRole: !Sub '${CodeBuildServiceRole.Arn}'
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: linuxContainer
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: 'aws/codebuild/standard:3.0'
+        PrivilegedMode: true
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: !Sub >-
+          arn:aws:s3:::${ResourcesS3Bucket}/${BuildSpecS3Prefix}/${DockerCodeBuildBuildSpecS3File}
+      TimeoutInMinutes: 20
+  LambdasCodeBuildProject:
+    Type: 'AWS::CodeBuild::Project'
+    DependsOn:
+      - CodeBuildServiceRole
+    Properties:
+      Name: LambdasCodeBuildProject
+      ServiceRole: !Sub '${CodeBuildServiceRole.Arn}'
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: linuxContainer
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: 'aws/codebuild/standard:3.0'
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: RESOURCES_BUCKET
+            Type: PLAINTEXT
+            Value: !Ref ResourcesS3Bucket
+          - Name: RESOURCES_PREFIX
+            Type: PLAINTEXT
+            Value: !Ref LambdasS3Prefix
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: !Sub >-
+          arn:aws:s3:::${ResourcesS3Bucket}/${BuildSpecS3Prefix}/${LambdasCodeBuildBuildSpecS3File}
+      TimeoutInMinutes: 10
+  TriggerDockerCodeBuildGenomesInTheCloud:
+    Type: 'Custom::TriggerDockerCodeBuildGitc'
+    DependsOn:
+      - DockerCodeBuildProject
+      - TriggerDockerCodeBuildLambda
+    Version: 1
+    Properties:
+      ServiceToken: !Sub '${TriggerDockerCodeBuildLambda.Arn}'
+      ProjectName: DockerCodeBuildProject
+      SourceRepo: !Ref DockerGenomesInTheCloud
+      EcrRepo: !GetAtt ECRGenomesInTheCloud.RepositoryUri
+  TriggerDockerCodeBuildGatk:
+    Type: 'Custom::TriggerDockerCodeBuildGatk'
+    DependsOn:
+      - DockerCodeBuildProject
+      - TriggerDockerCodeBuildLambda
+    Version: 1
+    Properties:
+      ServiceToken: !Sub '${TriggerDockerCodeBuildLambda.Arn}'
+      ProjectName: DockerCodeBuildProject
+      SourceRepo: !Ref DockerGatk
+      EcrRepo: !GetAtt ECRGatk.RepositoryUri
+  TriggerLambdasCodeBuild:
+    Type: 'Custom::TriggerLambdasCodeBuild'
+    DependsOn:
+      - LambdasCodeBuildProject
+      - TriggerLambdasCodeBuildLambda
+    Version: 1
+    Properties:
+      ServiceToken: !Sub '${TriggerLambdasCodeBuildLambda.Arn}'
+      ProjectName: LambdasCodeBuildProject
+  TriggerDockerCodeBuildLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - TriggerCodeBuildLambdaRole
+    Properties:
+      Handler: trigger_docker_code_build.handler
+      Runtime: python3.9
+      FunctionName: trigger-docker-code-build
+      Code:
+        S3Bucket: !Sub '${ResourcesS3Bucket}'
+        S3Key: !Sub '${LambdasS3Prefix}trigger_docker_code_build.zip'
+      Role: !Sub '${TriggerCodeBuildLambdaRole.Arn}'
+      Timeout: 60
+  TriggerLambdasCodeBuildLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - TriggerCodeBuildLambdaRole
+    Properties:
+      Handler: trigger_lambdas_code_build.handler
+      Runtime: python3.9
+      FunctionName: trigger-lambdas-code-build
+      Code:
+        S3Bucket: !Sub '${ResourcesS3Bucket}'
+        S3Key: !Sub '${LambdasS3Prefix}trigger_lambdas_code_build.zip'
+      Role: !Sub '${TriggerCodeBuildLambdaRole.Arn}'
+      Timeout: 60
+  TriggerCodeBuildLambdaRole:
+    Type: 'AWS::IAM::Role'
+    DependsOn: []
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: TriggerCodeBuildLambdaRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 'lambda:AddPermission'
+                  - 'lambda:RemovePermission'
+                  - 'events:PutRule'
+                  - 'events:DeleteRule'
+                  - 'events:PutTargets'
+                  - 'events:RemoveTargets'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:GetRole'
+                  - 'iam:PassRole'
+                Resource: !Sub '${CodeBuildServiceRole.Arn}'
+              - Effect: Allow
+                Action:
+                  - 'codebuild:StartBuild'
+                  - 'codebuild:BatchGetBuilds'
+                Resource: 
+                  - !Sub '${DockerCodeBuildProject.Arn}'
+                  - !Sub '${LambdasCodeBuildProject.Arn}'
+Outputs:
+  EcrImageUriGotc:
+    Value: !GetAtt TriggerDockerCodeBuildGenomesInTheCloud.EcrImageUri
+  EcrImageUriGatk:
+    Value: !GetAtt TriggerDockerCodeBuildGatk.EcrImageUri

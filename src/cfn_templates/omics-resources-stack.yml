@@ -1,0 +1,935 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: All necessary Amazon Omics Resources to store and process Genomics data
+Parameters:
+  UseLambdaLayer:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+  OmicsResourcePrefix:
+    Type: String
+    Default: omics-cfn
+  OmicsResourcesS3Bucket:
+    Type: String
+  OmicsCustomResourceLambdaS3Prefix:
+    Type: String
+  OmicsWorkflowInputBucketName:
+    Type: String
+  OmicsWorkflowOutputBucketName:
+    Type: String
+  OmicsReferenceFastaUri:
+    Type: String
+  OmicsReferenceName:
+    Type: String
+  OmicsModelLayerBucket:
+    Type: String
+  OmicsModelLayerKey:
+    Type: String
+  ClinvarS3Path:
+    Type: String
+  OmicsAnnotationStoreName:
+    Type: String
+    Default: omicsannotationstore
+  OmicsVariantStoreName:
+    Type: String
+    Default: omicsvariantstore
+  AnnotationStoreFormat:
+    Type: String
+    Default: VCF
+  OmicsWorkflowDefinitionZipS3:
+    Type: String
+  OmicsWorkflowParamsJsonS3:
+    Type: String
+Conditions:
+  UseLambdaLayerSelected: !Equals 
+    - !Sub '${UseLambdaLayer}'
+    - 'true'
+Resources:
+  OmicsModelsLambdaLayer:
+    Type: 'AWS::Lambda::LayerVersion'
+    Properties:
+      CompatibleRuntimes:
+        - python3.9
+      Content:
+        S3Bucket: !Sub '${OmicsModelLayerBucket}'
+        S3Key: !Sub '${OmicsModelLayerKey}'
+      Description: Layer to support omics models for boto3
+      LayerName: OmicsApiModels
+  OmicsReferenceStore:
+    Type: 'Custom::OmicsReferenceStore'
+    DependsOn:
+      - OmicsReferenceStoreLambda
+    Version: 1
+    Properties:
+      ServiceToken: !Sub '${OmicsReferenceStoreLambda.Arn}'
+      ReferenceStoreName: !Sub '${OmicsResourcePrefix}-reference-store'
+  OmicsReferenceStoreLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - OmicsModelsLambdaLayer
+      - OmicsReferenceStoreLambdaRole
+    Properties:
+      Handler: create_reference_store_lambda.handler
+      Runtime: python3.9
+      FunctionName: !Sub '${OmicsResourcePrefix}-create-reference-store'
+      Code:
+        S3Bucket: !Sub '${OmicsResourcesS3Bucket}'
+        S3Key: !Sub '${OmicsCustomResourceLambdaS3Prefix}create_reference_store_lambda.zip'
+      Role: !Sub '${OmicsReferenceStoreLambdaRole.Arn}'
+      Timeout: 60
+      Layers:
+        - !If 
+          - UseLambdaLayerSelected
+          - !Ref OmicsModelsLambdaLayer
+          - !Ref 'AWS::NoValue'
+  OmicsReferenceStoreLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: CreateReferenceStorePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 'omics:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:AddPermission'
+                  - 'lambda:RemovePermission'
+                  - 'events:PutRule'
+                  - 'events:DeleteRule'
+                  - 'events:PutTargets'
+                  - 'events:RemoveTargets'
+                Resource: '*'
+  OmicsImportReference:
+    Type: 'Custom::OmicsImportReference'
+    DependsOn:
+      - OmicsReferenceStore
+      - OmicsImportReferenceLambda
+    Version: 1
+    Properties:
+      ServiceToken: !Sub '${OmicsImportReferenceLambda.Arn}'
+      ReferenceStoreId: !Sub '${OmicsReferenceStore.ReferenceStoreId}'
+      ReferenceName: !Sub '${OmicsReferenceName}'
+      OmicsImportReferenceRoleArn: !Sub '${OmicsImportReferenceJobRole.Arn}'
+      ReferenceSourceS3Uri: !Ref OmicsReferenceFastaUri
+  OmicsImportReferenceLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - OmicsModelsLambdaLayer
+      - OmicsImportReferenceLambdaRole
+      - OmicsImportReferenceJobRole
+    Properties:
+      Handler: import_reference_lambda.handler
+      Runtime: python3.9
+      FunctionName: !Sub '${OmicsResourcePrefix}-import-reference'
+      Code:
+        S3Bucket: !Sub '${OmicsResourcesS3Bucket}'
+        S3Key: !Sub '${OmicsCustomResourceLambdaS3Prefix}import_reference_lambda.zip'
+      Role: !Sub '${OmicsImportReferenceLambdaRole.Arn}'
+      Timeout: 60
+      Layers:
+        - !If 
+          - UseLambdaLayerSelected
+          - !Ref OmicsModelsLambdaLayer
+          - !Ref 'AWS::NoValue'
+  OmicsImportReferenceLambdaRole:
+    Type: 'AWS::IAM::Role'
+    DependsOn:
+      - OmicsImportReferenceJobRole
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: ImportReferencePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 'omics:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:AddPermission'
+                  - 'lambda:RemovePermission'
+                  - 'events:PutRule'
+                  - 'events:DeleteRule'
+                  - 'events:PutTargets'
+                  - 'events:RemoveTargets'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:GetRole'
+                  - 'iam:PassRole'
+                Resource: !Sub '${OmicsImportReferenceJobRole.Arn}'
+  OmicsImportReferenceJobRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - omics.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: ImportReferenceJobRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:GetBucketLocation'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${OmicsResourcesS3Bucket}'
+                  - !Sub 'arn:aws:s3:::${OmicsResourcesS3Bucket}/*'
+                  - !Sub 'arn:aws:s3:::broad-references'
+                  - !Sub 'arn:aws:s3:::broad-references/*'
+  OmicsVariantStore:
+    Type: 'Custom::OmicsVariantStore'
+    DependsOn:
+      - OmicsVariantStoreLambda
+      - OmicsImportReference
+    Version: 1
+    Properties:
+      ServiceToken: !Sub '${OmicsVariantStoreLambda.Arn}'
+      VariantStoreName: !Sub '${OmicsVariantStoreName}'
+      ReferenceArn: !Sub '${OmicsImportReference.Arn}'
+  OmicsVariantStoreLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - OmicsModelsLambdaLayer
+      - OmicsVariantStoreLambdaRole
+    Properties:
+      Handler: create_variant_store_lambda.handler
+      Runtime: python3.9
+      FunctionName: !Sub '${OmicsResourcePrefix}-create-variant-store'
+      Code:
+        S3Bucket: !Sub '${OmicsResourcesS3Bucket}'
+        S3Key: !Sub '${OmicsCustomResourceLambdaS3Prefix}create_variant_store_lambda.zip'
+      Role: !Sub '${OmicsVariantStoreLambdaRole.Arn}'
+      Timeout: 60
+      Layers:
+        - !If 
+          - UseLambdaLayerSelected
+          - !Ref OmicsModelsLambdaLayer
+          - !Ref 'AWS::NoValue'
+  OmicsVariantStoreLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: CreateVariantStorePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 'omics:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:AddPermission'
+                  - 'lambda:RemovePermission'
+                  - 'events:PutRule'
+                  - 'events:DeleteRule'
+                  - 'events:PutTargets'
+                  - 'events:RemoveTargets'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'ram:GetResourceShareInvitations'
+                  - 'ram:AcceptResourceShareInvitation'
+                Resource: '*'
+  OmicsImportVariantLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - OmicsImportVariantLambdaRole
+    Properties:
+      Handler: import_variant_lambda.handler
+      Runtime: python3.9
+      FunctionName: !Sub '${OmicsResourcePrefix}-import-variant'
+      Code:
+        S3Bucket: !Sub '${OmicsResourcesS3Bucket}'
+        S3Key: !Sub '${OmicsCustomResourceLambdaS3Prefix}import_variant_lambda.zip'
+      Role: !Sub '${OmicsImportVariantLambdaRole.Arn}'
+      Timeout: 60
+      Layers:
+        - !If 
+          - UseLambdaLayerSelected
+          - !Ref OmicsModelsLambdaLayer
+          - !Ref 'AWS::NoValue'
+  OmicsImportVariantLambdaRole:
+    Type: 'AWS::IAM::Role'
+    DependsOn:
+      - OmicsImportVariantJobRole
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: ImportVariantPolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 'omics:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:GetRole'
+                  - 'iam:PassRole'
+                Resource: !Sub '${OmicsImportVariantJobRole.Arn}'
+  OmicsImportVariantJobRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - omics.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: OmicsImportVariantJobRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:GetBucketLocation'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${OmicsWorkflowOutputBucketName}'
+                  - !Sub 'arn:aws:s3:::${OmicsWorkflowOutputBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - 'omics:GetReference'
+                  - 'omics:GetReferenceMetadata'
+                Resource:
+                  - !Sub 'arn:aws:omics:${AWS::Region}:${AWS::AccountId}:referenceStore/*'
+  OmicsAnnotationStore:
+    Type: 'Custom::OmicsAnnotationStore'
+    DependsOn:
+      - OmicsAnnotationStoreLambda
+      - OmicsImportReference
+    Version: 1
+    Properties:
+      ServiceToken: !Sub '${OmicsAnnotationStoreLambda.Arn}'
+      AnnotationStoreName: !Sub '${OmicsAnnotationStoreName}'
+      ReferenceArn: !Sub '${OmicsImportReference.Arn}'
+      AnnotationStoreFormat: !Sub '${AnnotationStoreFormat}'
+  OmicsAnnotationStoreLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - OmicsAnnotationStoreLambdaRole
+    Properties:
+      Handler: create_annotation_store_lambda.handler
+      Runtime: python3.9
+      FunctionName: !Sub '${OmicsResourcePrefix}-create-annotation-store'
+      Code:
+        S3Bucket: !Sub '${OmicsResourcesS3Bucket}'
+        S3Key: !Sub '${OmicsCustomResourceLambdaS3Prefix}create_annotation_store_lambda.zip'
+      Role: !Sub '${OmicsAnnotationStoreLambdaRole.Arn}'
+      Timeout: 60
+      Layers:
+        - !If 
+          - UseLambdaLayerSelected
+          - !Ref OmicsModelsLambdaLayer
+          - !Ref 'AWS::NoValue'
+  OmicsAnnotationStoreLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: CreateAnnotationPolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 'omics:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:AddPermission'
+                  - 'lambda:RemovePermission'
+                  - 'events:PutRule'
+                  - 'events:DeleteRule'
+                  - 'events:PutTargets'
+                  - 'events:RemoveTargets'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'ram:GetResourceShareInvitations'
+                  - 'ram:AcceptResourceShareInvitation'
+                Resource: '*'
+  OmicsImportAnnotation:
+    Type: 'Custom::OmicsImportAnnotation'
+    DependsOn:
+      - OmicsAnnotationStore
+      - OmicsImportAnnotationLambda
+    Version: 1
+    Properties:
+      ServiceToken: !Sub '${OmicsImportAnnotationLambda.Arn}'
+      AnnotationStoreName: !Sub '${OmicsAnnotationStoreName}'
+      OmicsImportAnnotationRoleArn: !Sub '${OmicsImportAnnotationJobRole.Arn}'
+      AnnotationSourceS3Uri: !Ref ClinvarS3Path
+  OmicsImportAnnotationLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - OmicsImportAnnotationLambdaRole
+    Properties:
+      Handler: import_annotation_lambda.handler
+      Runtime: python3.9
+      FunctionName: !Sub '${OmicsResourcePrefix}-import-annotation'
+      Code:
+        S3Bucket: !Sub '${OmicsResourcesS3Bucket}'
+        S3Key: !Sub '${OmicsCustomResourceLambdaS3Prefix}import_annotation_lambda.zip'
+      Role: !Sub '${OmicsImportAnnotationLambdaRole.Arn}'
+      Timeout: 60
+      Layers:
+        - !If 
+          - UseLambdaLayerSelected
+          - !Ref OmicsModelsLambdaLayer
+          - !Ref 'AWS::NoValue'
+  OmicsImportAnnotationLambdaRole:
+    Type: 'AWS::IAM::Role'
+    DependsOn:
+      - OmicsImportAnnotationJobRole
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: ImportAnnotationPolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 'omics:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:AddPermission'
+                  - 'lambda:RemovePermission'
+                  - 'events:PutRule'
+                  - 'events:DeleteRule'
+                  - 'events:PutTargets'
+                  - 'events:RemoveTargets'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:GetRole'
+                  - 'iam:PassRole'
+                Resource: !Sub '${OmicsImportAnnotationJobRole.Arn}'
+  OmicsImportAnnotationJobRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - omics.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: ImportAnnotationJobRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:GetBucketLocation'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${OmicsResourcesS3Bucket}'
+                  - !Sub 'arn:aws:s3:::${OmicsResourcesS3Bucket}/*'
+                  - arn:aws:s3:::aws-genomics-datasets
+                  - 'arn:aws:s3:::aws-genomics-datasets/*'
+                  - arn:aws:s3:::aws-genomics-static-us-east-1
+                  - 'arn:aws:s3:::aws-genomics-static-us-east-1/*'
+              - Effect: Allow
+                Action:
+                  - 'omics:GetReference'
+                  - 'omics:GetReferenceMetadata'
+                Resource:
+                  - !Sub 'arn:aws:omics:${AWS::Region}:${AWS::AccountId}:referenceStore/*'
+  OmicsSequenceStore:
+    Type: 'Custom::OmicsSequenceStore'
+    DependsOn:
+      - OmicsSequenceStoreLambda
+    Version: 1
+    Properties:
+      ServiceToken: !Sub '${OmicsSequenceStoreLambda.Arn}'
+      SequenceStoreName: !Sub '${OmicsResourcePrefix}-sequence-store'
+  OmicsSequenceStoreLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - OmicsModelsLambdaLayer
+      - OmicsSequenceStoreLambdaRole
+    Properties:
+      Handler: create_sequence_store_lambda.handler
+      Runtime: python3.9
+      FunctionName: !Sub '${OmicsResourcePrefix}-create-sequence-store'
+      Code:
+        S3Bucket: !Sub '${OmicsResourcesS3Bucket}'
+        S3Key: !Sub '${OmicsCustomResourceLambdaS3Prefix}create_sequence_store_lambda.zip'
+      Role: !Sub '${OmicsSequenceStoreLambdaRole.Arn}'
+      Timeout: 60
+      Layers:
+        - !If 
+          - UseLambdaLayerSelected
+          - !Ref OmicsModelsLambdaLayer
+          - !Ref 'AWS::NoValue'
+  OmicsSequenceStoreLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: CreateSequenceStorePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 'omics:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:AddPermission'
+                  - 'lambda:RemovePermission'
+                  - 'events:PutRule'
+                  - 'events:DeleteRule'
+                  - 'events:PutTargets'
+                  - 'events:RemoveTargets'
+                Resource: '*'
+  OmicsCreateWorkflow:
+    Type: 'Custom::OmicsWorkflow'
+    DependsOn:
+      - OmicsCreateWorkflowLambda
+    Version: 1
+    Properties:
+      ServiceToken: !Sub '${OmicsCreateWorkflowLambda.Arn}'
+      WorkflowName: !Sub '${OmicsResourcePrefix}-test-workflow'
+      WorkflowDescription: !Sub '${OmicsResourcePrefix} test workflow'
+      WorkflowDefinitionZip: !Sub ${OmicsWorkflowDefinitionZipS3}
+      WorkflowParamsJson: !Sub ${OmicsWorkflowParamsJsonS3}
+  OmicsCreateWorkflowLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - OmicsModelsLambdaLayer
+      - OmicsCreateWorkflowLambdaRole
+    Properties:
+      Handler: create_workflow_lambda.handler
+      Runtime: python3.9
+      FunctionName: !Sub '${OmicsResourcePrefix}-create-workflow'
+      Code:
+        S3Bucket: !Sub '${OmicsResourcesS3Bucket}'
+        S3Key: !Sub '${OmicsCustomResourceLambdaS3Prefix}create_workflow_lambda.zip'
+      Role: !Sub '${OmicsCreateWorkflowLambdaRole.Arn}'
+      Timeout: 60
+      Layers:
+        - !If 
+          - UseLambdaLayerSelected
+          - !Ref OmicsModelsLambdaLayer
+          - !Ref 'AWS::NoValue'
+  OmicsCreateWorkflowLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: CreateWorkflowPolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 'omics:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'lambda:AddPermission'
+                  - 'lambda:RemovePermission'
+                  - 'events:PutRule'
+                  - 'events:DeleteRule'
+                  - 'events:PutTargets'
+                  - 'events:RemoveTargets'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:GetBucketLocation'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${OmicsResourcesS3Bucket}'
+                  - !Sub 'arn:aws:s3:::${OmicsResourcesS3Bucket}/*'
+                  - arn:aws:s3:::aws-genomics-datasets
+                  - 'arn:aws:s3:::aws-genomics-datasets/*'
+  OmicsWorkflowStartRunLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - OmicsModelsLambdaLayer
+      - OmicsWorkflowStartRunLambdaRole
+    Properties:
+      Handler: start_workflow_lambda.handler
+      Runtime: python3.9
+      FunctionName: !Sub '${OmicsResourcePrefix}-start-workflow'
+      Code:
+        S3Bucket: !Sub '${OmicsResourcesS3Bucket}'
+        S3Key: !Sub '${OmicsCustomResourceLambdaS3Prefix}start_workflow_lambda.zip'
+      Role: !Sub '${OmicsWorkflowStartRunLambdaRole.Arn}'
+      Timeout: 60
+      Layers:
+        - !If 
+          - UseLambdaLayerSelected
+          - !Ref OmicsModelsLambdaLayer
+          - !Ref 'AWS::NoValue'
+  OmicsWorkflowStartRunLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: ImportSequencePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 'omics:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:GetRole'
+                  - 'iam:PassRole'
+                Resource: !Sub '${OmicsWorkflowStartRunJobRole.Arn}'
+  OmicsWorkflowStartRunJobRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - omics.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: WorkflowStartRunJobRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:GetBucketLocation'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${OmicsWorkflowInputBucketName}'
+                  - !Sub 'arn:aws:s3:::${OmicsWorkflowInputBucketName}/*'
+                  - arn:aws:s3:::broad-references
+                  - 'arn:aws:s3:::broad-references/*'
+                  - arn:aws:s3:::gatk-test-data
+                  - 'arn:aws:s3:::gatk-test-data/*'
+                  - arn:aws:s3:::aws-genomics-datasets
+                  - 'arn:aws:s3:::aws-genomics-datasets/*'
+                  - arn:aws:s3:::aws-genomics-static-us-east-1
+                  - 'arn:aws:s3:::aws-genomics-static-us-east-1/*'
+                  - !Sub 'arn:aws:s3:::${OmicsResourcesS3Bucket}'
+                  - !Sub 'arn:aws:s3:::${OmicsResourcesS3Bucket}/*'
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:GetBucketLocation'
+                  - 's3:ListBucket'
+                  - 's3:PutObject'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${OmicsWorkflowOutputBucketName}'
+                  - !Sub 'arn:aws:s3:::${OmicsWorkflowOutputBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:GetRepositoryPolicy
+                  - ecr:ListImages
+                  - ecr:DescribeImages
+                  - ecr:BatchGetImage
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - 'omics:*'
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/omics/WorkflowLog:*'
+              - Effect: Allow
+                Action:
+                  - 'logs:DescribeLogStreams'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/omics/WorkflowLog:log-stream:*'
+
+  OmicsImportSequenceLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - OmicsModelsLambdaLayer
+      - OmicsSequenceStoreLambdaRole
+    Properties:
+      Handler: import_sequence_lambda.handler
+      Runtime: python3.9
+      FunctionName: !Sub '${OmicsResourcePrefix}-import-sequence'
+      Code:
+        S3Bucket: !Sub '${OmicsResourcesS3Bucket}'
+        S3Key: !Sub '${OmicsCustomResourceLambdaS3Prefix}import_sequence_lambda.zip'
+      Role: !Sub '${OmicsImportSequenceLambdaRole.Arn}'
+      Timeout: 60
+      Layers:
+        - !If 
+          - UseLambdaLayerSelected
+          - !Ref OmicsModelsLambdaLayer
+          - !Ref 'AWS::NoValue'
+  OmicsImportSequenceLambdaRole:
+    Type: 'AWS::IAM::Role'
+    DependsOn:
+      - OmicsImportSequenceJobRole
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: ImportSequencePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub >-
+                    arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - 'omics:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:GetRole'
+                  - 'iam:PassRole'
+                Resource: !Sub ${OmicsImportSequenceJobRole.Arn}
+  OmicsImportSequenceJobRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - omics.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: ImportSequenceJobRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:GetBucketLocation'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${OmicsWorkflowInputBucketName}'
+                  - !Sub 'arn:aws:s3:::${OmicsWorkflowInputBucketName}/*'
+                  - !Sub 'arn:aws:s3:::${OmicsWorkflowOutputBucketName}'
+                  - !Sub 'arn:aws:s3:::${OmicsWorkflowOutputBucketName}/*'
+Outputs:
+  OmicsImportSequenceLambdaArn:
+    Value: !Sub ${OmicsImportSequenceLambda.Arn}
+  OmicsImportSequenceJobRoleArn:
+    Value: !Sub ${OmicsImportSequenceJobRole.Arn}
+  OmicsWorkflowStartRunLambdaArn:
+    Value: !Sub ${OmicsWorkflowStartRunLambda.Arn}
+  OmicsWorkflowStartRunJobRoleArn:
+    Value: !Sub ${OmicsWorkflowStartRunJobRole.Arn}
+  OmicsImportVariantLambdaArn:
+    Value: !Sub ${OmicsImportVariantLambda.Arn}
+  OmicsImportVariantJobRoleArn:
+    Value: !Sub ${OmicsImportVariantJobRole.Arn}
+  OmicsModelsLambdaLayerArn:
+    Value: !Ref OmicsModelsLambdaLayer
+  OmicsSequenceStoreId:
+    Value: !GetAtt OmicsSequenceStore.SequenceStoreId
+  OmicsReferenceArn:
+    Value: !GetAtt OmicsImportReference.Arn
+  OmicsWorkflowId:
+    Value: !GetAtt OmicsCreateWorkflow.WorkflowId

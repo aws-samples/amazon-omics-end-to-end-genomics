@@ -1,0 +1,24 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      docker: 18
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
+      - REPOSITORY_URI=$ECR_REPO
+      - IMAGE_TAG=$ECR_REPO_VERSION
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Pull public docker image
+      - docker pull $SOURCE_REPO
+      - docker tag $SOURCE_REPO $REPOSITORY_URI:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo Pull completed on `date`
+      - echo Pushing the Docker image...
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - echo Push complete on `date`
