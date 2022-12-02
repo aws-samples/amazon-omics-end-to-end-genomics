@@ -2,8 +2,6 @@
 
 set -e 
 
-ls --fake 
-
 ARTIFACT_S3_BUCKET=s3://${1}
 AWS_PROFILE=$2
 TEMPLATES='templates'
