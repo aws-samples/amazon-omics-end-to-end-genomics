@@ -1,5 +1,9 @@
 #!/bin/bash
 
+set -e 
+
+ls --fake 
+
 ARTIFACT_S3_BUCKET=s3://${1}
 AWS_PROFILE=$2
 TEMPLATES='templates'
@@ -18,7 +22,7 @@ echo "TRIGGER CODEBUILD JOB LAMBDAS"
 echo "=========================================="
 cd ../src/lambda/trigger_code_build
 echo "Installing pip packages"
-pip install crhelper -t ./package
+pip3 install crhelper -t ./package
 cd ./package
 zip -r ../trigger_docker_code_build.zip .
 cd ..
