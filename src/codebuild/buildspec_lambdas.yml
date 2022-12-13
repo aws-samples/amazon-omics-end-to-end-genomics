@@ -13,7 +13,7 @@ phases:
         artifact_s3_dirname=${RESOURCES_PREFIX}
 
         # to be removed
-        aws s3 cp s3://e2e-artifacts-999/move_to_public_bucket/lambdalayer.zip s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}
+        aws s3 cp s3://aws-genomics-static-us-east-1/omics-e2e/lambdalayer.zip s3://${RESOURCES_BUCKET}/${lambda_s3_dirname}
 
         # Declare all lambda functions with package needs
         declare -a LambdaNamesWithCrHelper=("create_reference_store_lambda" "import_reference_lambda" "create_variant_store_lambda" "create_sequence_store_lambda" "create_annotation_store_lambda" "import_annotation_lambda" "create_workflow_lambda" "add_bucket_notification_lambda")
