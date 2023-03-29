@@ -33,7 +33,7 @@ def update(event, context):
 @helper.delete
 def delete(event, context):
     logger.info("Got Delete")
-    pass
+    return "delete"
     # Delete never returns anything. Should not fail if the underlying resources are already deleted. Desired state.
 
 @helper.poll_create
@@ -51,7 +51,7 @@ def poll_update(event, context):
 @helper.poll_delete
 def poll_delete(event, context):
     logger.info("Got Delete poll")
-    return check_code_build_status(event, context)
+    return "delete poll"
 
 def handler(event, context):
     helper(event, context)

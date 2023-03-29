@@ -1,6 +1,4 @@
 import boto3
-import os
-
 from copy import deepcopy
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -12,8 +10,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Set up for omics model for boto3, only needed while in beta
-
-os.environ['AWS_DATA_PATH'] = '/opt/models'
 
 session = boto3.Session()
 

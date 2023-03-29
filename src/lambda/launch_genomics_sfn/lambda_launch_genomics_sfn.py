@@ -4,6 +4,8 @@ import re
 import os
 import sys
 import uuid
+import time
+import random
 
 print('Loading function - launch Genomics Step Function Workflow')
 
@@ -18,6 +20,7 @@ FASTQ_REGEX = re.compile('^(\w{1,20})_R(\d{1,10})\.*')
 # found with prefix, for example, inputs/mysamples
 EXPECTED_READS = int(os.environ['NUM_FASTQS_PER_SAMPLE'])
 SFN_ARN = os.environ['GENOMICS_STEP_FUNCTION_ARN']
+MAX_DELAY = 20
 
 def get_files_with_prefix(_bucket, _key, _sample):
     file_list = []
@@ -43,12 +46,30 @@ def verify_fastq(_filename):
     else:
         return False
 
+def is_sfn_exec_running(exec_name_prefix):
+    sfn_client = boto3.client('stepfunctions')
+    try:
+        response = sfn_client.list_executions(
+            stateMachineArn=SFN_ARN,
+            statusFilter='RUNNING'
+        )
+    except Exception as e:
+        raise e
+    # check for response
+    if 'executions' in response and len(response['executions']) > 0:
+        for _exec in response['executions']:
+            if _exec['name'].startswith(exec_name_prefix):
+                return True
+        return False
+    else:
+        return False
+
 def lambda_handler(event, context):
     # Sanity checks
     print("Received s3 event: " + json.dumps(event, indent=4))
     if "Records" not in event:
         sys.exit("Event doesnt have records, exiting")
-    
+
     if len(event["Records"]) == 0:
         sys.exit("Event has empty records, exiting")
 
@@ -70,12 +91,26 @@ def lambda_handler(event, context):
         if not verify_fastq(_key.split('/')[-1]):
             sys.exit("Not a valid fastq")
         else:
+            # Add a random sleep to reduce likelihood of a race condition when
+            # multiple fastqs arrive at the same time
+            time_delay_seconds = random.randrange(0, MAX_DELAY)
+            print(f"Waiting for {time_delay_seconds} seconds")
+            time.sleep(time_delay_seconds)
+
             result = re.match(FASTQ_REGEX, os.path.basename(_key))
             sample_name = result.group(1)
             files_for_sample = get_files_with_prefix(bucket, _key, sample_name)
             print(f"{len(files_for_sample)} reads found for sample {sample_name}")
             if len(files_for_sample) == EXPECTED_READS:
                 print("All FASTQs for sample accounted for, start step functions")
+                sfn_name_prefix = f'GENOMICS_{sample_name}'
+                sfn_exec_name = sfn_name_prefix + '_' + str(uuid.uuid1())
+
+                # check if already running (to avoid race condition)
+                print("Checking if SFN execution running")
+                if is_sfn_exec_running(sfn_name_prefix):
+                    sys.exit(f"SFN execution for sample: {sample_name} is RUNNING, skip launching a duplicate")
+
                 sfn_payload = {
                     "SampleId": sample_name,
                     "Read1":  files_for_sample[0],
@@ -93,9 +128,10 @@ def lambda_handler(event, context):
                 try:
                     response = sfn_client.start_execution(
                         stateMachineArn=SFN_ARN,
-                        name=f'GENOMICS_{sample_name}_' + str(uuid.uuid1()),
+                        name=sfn_exec_name,
                         input=json.dumps(sfn_payload)
                     )
+                    print(f"Launched SFN execution: {sfn_exec_name}")
                 except Exception as e:
                     raise e
             else:

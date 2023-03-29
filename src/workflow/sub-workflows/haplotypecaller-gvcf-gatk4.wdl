@@ -33,7 +33,7 @@ workflow HaplotypeCallerGvcf_GATK4 {
         File ref_fasta_index
         File ref_dict
         String gatk_docker
-	String gotc_docker
+	    String gotc_docker
     }
 
     

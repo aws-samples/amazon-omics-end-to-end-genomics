@@ -33,19 +33,20 @@ You can use the 2nd argument <aws-profile-name> as an optional argument if you c
 ```
 3. Navigate to the AWS S3 Console. In the list of buckets, click on `<my-artifact-bucket>` and navigate to `templates` prefix. Find the file named `solution-cfn.yml`. Copy the Object URL (begins with https://) for this object (not the S3 URI).
 4. Navigate to AWS CloudFormation Console. Click on `Create Stack`, select `Template is ready` and paste the above https:// Object URL into the `Amazon S3 URL` field and click `Next`. 
-5. Fill in the `Stack name` with a name of your choice, `ArtifactBucketName` with `<my-artifact-bucket>`, `WorkflowInputsBucketName` & `WorkflowOutputsBucketName` with new bucket names of your choice; these buckets will be created. 
-6. Click Next on the subsequent two pages, then on the Review <Stack name> page, acknowledge the following 'Capabilities', and click `Submit`:
+5. Fill in the `Stack name` with a name of your choice, `ArtifactBucketName` with `<my-artifact-bucket>`, `WorkflowInputsBucketName` & `WorkflowOutputsBucketName` with new bucket names of your choice; these buckets will be created.
+6. For the `CurrentReferenceStoreId` parameter, if the account that you plan to use has an existing reference store and you want to repurpose it, you can provide the Referernce store ID as the value. (Since only 1 reference store is allowed per account per region). If you don't have one and want to create a new one, provide the value `NONE`. 
+7. Click Next on the subsequent two pages, then on the Review <Stack name> page, acknowledge the following 'Capabilities', and click `Submit`:
     - AWS CloudFormation might create IAM resources with custom names.
     - AWS CloudFormation might require the following capability: CAPABILITY_AUTO_EXPAND
-7. CloudFormation will now create multiple stacks with all the necessary resources, including Omics resources:
-    - Omics Reference Store with Reference genome imported
+8. CloudFormation will now create multiple stacks with all the necessary resources, including Omics resources:
+    - Omics Reference Store with Reference genome imported (Skip Reference store creation if store ID provided)
     - Omics Sequence Store
     - Omics Workflow with workflow definition and parameters defined
     - Omics Variant Store
     - Omics Annotation Store with ClinVar imported
 
-8. It's recommended that users update omics permissions to least privilege access when leveraging this sample code as a starting point for future production needs.
-9. The CloudFormation Stack should complete deployment in less than an hour
+9. It's recommended that users update omics permissions to least privilege access when leveraging this sample code as a starting point for future production needs.
+10. The CloudFormation Stack should complete deployment in less than an hour
 
 ## Usage
 1. Once the template has been deployed successfully, you can use a pair of FASTQ files to launch the end to end Secondary Analysis pipeline. 
@@ -73,7 +74,7 @@ s3://aws-genomics-static-us-east-1/omics-e2e/test_fastqs/NA1287820K_R2.fastq.gz
 ```
 NOTE
 
-Currently if both FASTQs are uploaded simultaneaously, it could result in 2 Step Functions Workflows being launched due to a race condition. To avoind this, upload 1 FASTQ file at a time, preferrebly with at least a 3 second gap.
+Currently if both FASTQs are uploaded simultaneaously, the Step Function trigger lambda has a best-effort mechanism to avoid race conditions by adding a random delay and checking for a running execution with the same sample name. It's recommended to check for a duplicate execution as a precaution.
 ```
 
 3. The Step Functions workflow has the following steps:
@@ -96,7 +97,8 @@ The above solution has deployed several AWS resources as part of the CloudFormat
 
 1. Delete the CloudFormation stack with the name that was assigned at creation. This will start deleting all the resources created. 
 2. Due to certain actions taken during usage of the solution, resources such as the Workflow input and output buckets and the ECR respoistories will fail to delete due to them not being empty. In order to delete them as well, users will have to empty the contents of the S3 buckets for Workflow inputs and outputs and delete the images created under the Amazon ECR repositories (if you chose to clean up these resources). Once deleted, you can re-attempt to delete the CloudFormation stack.
-3. If the Omics resources fail to delete by the delete stack action in CloudFormation, users will need to manually delete the Omics Resources created by the stack, such as the workfow, variant store, annotation store, sequence store and reference store. Once done, you can re-attempt to delete the CloudFormation stack.  
+3. If the Omics resources fail to delete by the delete stack action in CloudFormation, users will need to manually delete the Omics Resources created by the stack, such as the workfow, variant store, annotation store, sequence store and reference store (or just the imported reference genome). Once done, you can re-attempt to delete the CloudFormation stack.  
+4. If certain custom CloudFormation resources such as Lambda functions in the Omics and CodeBuild stacks fail to delete again, simply retrying the deletion of the parent stack should delete it.
    
 
 ## License

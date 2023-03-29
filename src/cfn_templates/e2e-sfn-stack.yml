@@ -36,6 +36,9 @@ Parameters:
     Type: String
     Description: Example sequencing center
     Default: ABCD
+  OmicsVariantStoreName:
+    Type: String
+    
 Description: >-
   State Machine for ingesting FASTQs into Omics Sequence Store,
   running GATK workflow with input FASTQs,
@@ -323,7 +326,7 @@ Resources:
                                   {
                                       "FunctionName": "${OmicsImportVariantLambdaArn}",
                                       "Payload": {
-                                          "VariantStoreName": "omicsvariantstore",
+                                          "VariantStoreName": "${OmicsVariantStoreName}",
                                           "OmicsImportVariantRoleArn": "${OmicsImportVariantJobRoleArn}",
                                           "VcfS3Uri.$": "States.Format('{}/{}/out/output_vcf/{}.hg38.vcf.gz', $.WorkflowOutputS3Path, $.workflow.workflow.WorkflowRunId, $.SampleId)"
                                         }

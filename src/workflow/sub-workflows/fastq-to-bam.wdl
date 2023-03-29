@@ -40,19 +40,16 @@ workflow ConvertPairedFastQsToUnmappedBamWf {
         File fastq_1
         File fastq_2
         String readgroup_name
-      String run_date
-      String library_name
-      String platform_name
-      String sequencing_center
-      String gatk_docker
-
-
+        String run_date
+        String library_name
+        String platform_name
+        String sequencing_center
+        String gatk_docker
     }
 
     #String gatk_docker = "022521056385.dkr.ecr.us-east-1.amazonaws.com/gatk:4.1.9.0"
 
     String gatk_path = "/gatk/gatk"
-
 
     # Convert pair of FASTQs to uBAM
     call PairedFastQsToUnmappedBAM {
@@ -61,10 +58,10 @@ workflow ConvertPairedFastQsToUnmappedBamWf {
             fastq_1 = fastq_1,
             fastq_2 = fastq_2,
             readgroup_name = readgroup_name,
-       run_date = run_date,
-        library_name = library_name,
-        platform_name = platform_name,
-        sequencing_center = sequencing_center,
+            run_date = run_date,
+            library_name = library_name,
+            platform_name = platform_name,
+            sequencing_center = sequencing_center,
             gatk_path = gatk_path,
             docker = gatk_docker,
     }
@@ -87,10 +84,10 @@ task PairedFastQsToUnmappedBAM {
         File fastq_2
         String readgroup_name
         String gatk_path
-      String run_date
-      String library_name
-      String platform_name
-      String sequencing_center
+        String run_date
+        String library_name
+        String platform_name
+        String sequencing_center
 
         # Runtime parameters
         Int machine_mem_gb = 7
@@ -106,15 +103,15 @@ task PairedFastQsToUnmappedBAM {
 
         ~{gatk_path} --java-options "-Xmx~{command_mem_gb}g" \
         FastqToSam \
-        --FASTQ ~{fastq_1} \
-        --FASTQ2 ~{fastq_2} \
-        --OUTPUT ~{readgroup_name}.unmapped.bam \
-        --READ_GROUP_NAME ~{readgroup_name} \
-        --SAMPLE_NAME ~{sample_name} \
-               --LIBRARY_NAME ~{library_name} \
-                --RUN_DATE ~{run_date} \
-                --PLATFORM ~{platform_name} \
-                --SEQUENCING_CENTER ~{sequencing_center}
+            --FASTQ ~{fastq_1} \
+            --FASTQ2 ~{fastq_2} \
+            --OUTPUT ~{readgroup_name}.unmapped.bam \
+            --READ_GROUP_NAME ~{readgroup_name} \
+            --SAMPLE_NAME ~{sample_name} \
+            --LIBRARY_NAME ~{library_name} \
+            --RUN_DATE ~{run_date} \
+            --PLATFORM ~{platform_name} \
+            --SEQUENCING_CENTER ~{sequencing_center}
 
         # Creates a file of file names of the uBAM, which is a text file with each row having the path to the file.
         # In this case there will only be one file path in the txt file but this format is used by

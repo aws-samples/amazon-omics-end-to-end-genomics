@@ -3,28 +3,16 @@ Description: >-
   Lambda to check completion of various Omics API calls
   such as Sequence data import and Omics workflow completion
 Parameters:
-  UseLambdaLayer:
-    Type: String
-    Default: 'true'
-    AllowedValues:
-      - 'true'
-      - 'false'
   OmicsOutputBucket:
     Type: String
     Description: S3 bucket that Amazon Omics workflow will write outputs to
-  OmicsLambdaLayerARN:
-    Type: String
-    Description: ARN for Lambda Layer containing boto service model for Amazon Omics
   LambdaBucketName:
     Type: String
     Description: S3 bucket where lambda code artifacts are stored
   LambdaArtifactPrefix:
     Type: String
     Description: Prefix in bucket where lambda artifacts are stored
-Conditions:
-  UseLambdaLayerSelected: !Equals 
-    - !Sub '${UseLambdaLayer}'
-    - 'true'
+
 Resources:
   CheckOmicsTaskLambdaFunction:
     Type: 'AWS::Lambda::Function'
@@ -35,11 +23,6 @@ Resources:
         S3Key: !Sub '${LambdaArtifactPrefix}lambda_check_omics_workflow_task.zip'
       Handler: lambda_check_omics_workflow_task.lambda_handler
       Role: !GetAtt LambdaIAMRole.Arn
-      Layers:
-        - !If 
-          - UseLambdaLayerSelected
-          - !Ref OmicsLambdaLayerARN
-          - !Ref 'AWS::NoValue'
       Runtime: python3.9
       Timeout: 20
 

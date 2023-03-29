@@ -93,6 +93,8 @@ Resources:
                 Action:
                   - 'states:StartExecution'
                   - 'states:StartSyncExecution'
+                  - 'states:ListExecutions'
+                  - 'states:ListStateMachines'
                 Resource: !Sub ${GenomicsStepFunctionArn}
 
   PutBucketNotificationTrigger:

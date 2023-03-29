@@ -426,7 +426,7 @@ task SortAndFixTags {
     File ref_fasta_index
 
     Int compression_level
-    Float mem_size_gb = 512
+    Float mem_size_gb = 32
 
     String docker_image
     String gatk_path
@@ -437,7 +437,7 @@ task SortAndFixTags {
 
     set -euxo pipefail
 
-    ~{gatk_path} --java-options "-Xmx480G -Xms480G" \
+    ~{gatk_path} --java-options "-Xmx32G -Xms32G" \
     SortSam \
     --INPUT ~{input_bam} \
     --OUTPUT /dev/stdout \
@@ -473,7 +473,7 @@ task MarkDuplicates {
     String metrics_filename
 
     Int compression_level
-    Float mem_size_gb = 512
+    Float mem_size_gb = 32
 
     String docker_image
     String gatk_path

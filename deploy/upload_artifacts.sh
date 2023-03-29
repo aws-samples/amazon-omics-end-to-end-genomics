@@ -20,7 +20,7 @@ echo "TRIGGER CODEBUILD JOB LAMBDAS"
 echo "=========================================="
 cd ../src/lambda/trigger_code_build
 echo "Installing pip packages"
-pip3 install crhelper -t ./package
+pip3 install crhelper boto3==1.26.65 -t ./package
 cd ./package
 zip -r ../trigger_docker_code_build.zip .
 cd ..

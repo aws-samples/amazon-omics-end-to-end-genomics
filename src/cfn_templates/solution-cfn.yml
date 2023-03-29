@@ -51,28 +51,19 @@ Parameters:
     Type: String
     Description: File name used by the upload script - keep in sync
     Default: gatkbestpractices.wdl.zip
-  WorkflowParamsJsonTemplateFilename:
+  CurrentReferenceStoreId:
+    Type: String 
+    Default: 'NONE'
+    Description: 'Provide Reference Store ID if exists in current account-region, else leave it NONE'  
+  VariantStoreName:
     Type: String
-    Description: File name for the template - keep in sync with file in repo
-    Default: parameter-template.json
-  LambdaLayerS3Bucket:
+    Default: omicsvariantstore
+    Description: Name of the Omics Variant store
+  AnnotationStoreName:
     Type: String
-    Description: bucket where omics API model ZIP is stored
-    Default: aws-genomics-static-us-east-1
-  LambdaLayerS3Key:
-    Type: String
-    Description: zip file s3 key for omics models lambda layer
-    Default: omics-e2e/lambdalayer.zip
-  UseLambdaLayer:
-    Type: String
-    Default: 'true'
-    AllowedValues:
-      - 'true'
-      - 'false'
-Conditions:
-  UseLambdaLayerSelected: !Equals 
-    - !Sub '${UseLambdaLayer}'
-    - 'true'
+    Default: omicsannotationstore
+    Description: Name of the Omics Annotation store
+
 Resources:
   CodeBuildStack:
     Type: AWS::CloudFormation::Stack
@@ -85,6 +76,7 @@ Resources:
         BuildSpecS3Prefix: !Ref CodeBuildArtifactsS3Prefix
         DockerGenomesInTheCloud: public.ecr.aws/aws-genomics/broadinstitute/genomes-in-the-cloud:2.4.7-1603303710
         DockerGatk: public.ecr.aws/aws-genomics/broadinstitute/gatk:4.1.9.0
+
   S3ResourcesStack:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -93,6 +85,7 @@ Resources:
       Parameters:
         DataInputBucketName: !Ref WorkflowInputsBucketName
         DataOutputBucketName: !Ref WorkflowOutputsBucketName
+
   OmicsResourcesStack:
     Type: AWS::CloudFormation::Stack
     DependsOn:
@@ -106,14 +99,14 @@ Resources:
         OmicsCustomResourceLambdaS3Prefix: !Ref LambdaArtifactsS3Prefix
         OmicsWorkflowInputBucketName: !Ref WorkflowInputsBucketName
         OmicsWorkflowOutputBucketName: !Ref WorkflowOutputsBucketName
+        ExistingReferenceStoreId: !Ref CurrentReferenceStoreId
         OmicsReferenceFastaUri: !Ref ReferenceFastaS3Uri
         OmicsReferenceName: !Ref ReferenceFastaName
         OmicsWorkflowDefinitionZipS3: !Sub "s3://${ArtifactBucketName}/${WorkflowArtifactsS3Prefix}/${WorkflowDefinitionFilename}"
-        OmicsWorkflowParamsJsonS3: !Sub "s3://${ArtifactBucketName}/${WorkflowArtifactsS3Prefix}/${WorkflowParamsJsonTemplateFilename}"
         ClinvarS3Path: !Ref ClinVarVcfS3Path
-        UseLambdaLayer: !Ref UseLambdaLayer
-        OmicsModelLayerBucket: !Ref LambdaLayerS3Bucket
-        OmicsModelLayerKey: !Ref LambdaLayerS3Key
+        OmicsVariantStoreName: !Ref VariantStoreName
+        OmicsAnnotationStoreName: !Ref AnnotationStoreName
+
   ApplyS3LifecycleStack:
     Type: AWS::CloudFormation::Stack
     DependsOn:
@@ -137,13 +130,9 @@ Resources:
       TimeoutInMinutes: 10
       Parameters:
         OmicsOutputBucket: !Ref WorkflowOutputsBucketName
-        OmicsLambdaLayerARN:
-          Fn::GetAtt:
-            - OmicsResourcesStack
-            - Outputs.OmicsModelsLambdaLayerArn
         LambdaBucketName: !Ref ArtifactBucketName
         LambdaArtifactPrefix: !Ref LambdaArtifactsS3Prefix
-        UseLambdaLayer: !Ref UseLambdaLayer
+
   StepFunctionStack:
     Type: AWS::CloudFormation::Stack
     DependsOn:
@@ -154,6 +143,7 @@ Resources:
       TimeoutInMinutes: 60
       Parameters:
         ReferenceFastaFileS3Uri: !Ref ReferenceFastaS3Uri
+        OmicsVariantStoreName: !Ref VariantStoreName
         DbSnpVcf: !Ref DnSnpVcfS3Uri
         Mills1000GIndelsVcf: !Ref Mills1000GIndelsVcfS3Uri
         KnownIndelsVcf: !Ref KnownIndelsVcfS3Uri

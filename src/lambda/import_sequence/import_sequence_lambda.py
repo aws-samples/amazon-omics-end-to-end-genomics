@@ -1,12 +1,8 @@
 import logging
 import boto3
 from botocore.exceptions import ClientError
-import os 
 
 logger = logging.getLogger(__name__)
-
-# Use omics model from lambda layer
-os.environ['AWS_DATA_PATH'] = '/opt/models'
 
 # Initiate client
 try:

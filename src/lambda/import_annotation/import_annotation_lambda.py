@@ -2,14 +2,10 @@ from crhelper import CfnResource
 import logging
 import boto3
 from botocore.exceptions import ClientError
-import os 
 
 logger = logging.getLogger(__name__)
 # Initialise the helper, all inputs are optional, this example shows the defaults
 helper = CfnResource(json_logging=False, log_level='DEBUG', boto_level='CRITICAL', polling_interval=1)
-
-# Use omics model from lambda layer
-os.environ['AWS_DATA_PATH'] = '/opt/models'
 
 # Initiate client
 try:
@@ -36,7 +32,7 @@ def update(event, context):
 @helper.delete
 def delete(event, context):
     logger.info("Got Delete")
-    pass
+    return "delete"
     # Delete never returns anything. Should not fail if the underlying resources are already deleted. Desired state.
 
 @helper.poll_create
@@ -54,7 +50,7 @@ def poll_update(event, context):
 @helper.poll_delete
 def poll_delete(event, context):
     logger.info("Got Delete poll")
-    return check_annotation_import_status(event, context)
+    return "delete poll"
 
 def handler(event, context):
     helper(event, context)
